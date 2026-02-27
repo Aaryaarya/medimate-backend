@@ -81,15 +81,16 @@ app.post("/analyze-prescription", upload.single("image"), async (req, res) => {
 
     const imageBase64 = req.file.buffer.toString("base64");
 
+    let mimeType = req.file.mimetype;
+
+    if (mimeType === "application/octet-stream") {
+      mimeType = "image/jpeg";
+    }
+
     const prompt = `
 You are an OCR text extraction system.
-
-Extract ALL visible text from the provided prescription image.
-
+Extract ALL visible text from the prescription image.
 Return ONLY raw text exactly as written.
-Do NOT summarize.
-Do NOT structure.
-Do NOT return JSON.
 `;
 
     const response = await fetch(
@@ -106,7 +107,7 @@ Do NOT return JSON.
                 { text: prompt },
                 {
                   inline_data: {
-                    mime_type: req.file.mimetype,
+                    mime_type: mimeType,
                     data: imageBase64,
                   },
                 },
