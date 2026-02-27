@@ -29,6 +29,49 @@ app.get("/test-db", async (req, res) => {
   res.json(rows);
 });
 
+
+// ================= USER ROUTES =================
+
+// Register user (store role)
+app.post("/register-user", async (req, res) => {
+  const { firebase_uid, email, role } = req.body;
+
+  try {
+    await pool.query(
+      "INSERT INTO users (firebase_uid, email, role) VALUES (?, ?, ?)",
+      [firebase_uid, email, role]
+    );
+
+    res.status(200).json({ message: "User saved successfully" });
+  } catch (error) {
+    console.error("Register error:", error);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+
+// Get role using Firebase UID
+app.get("/get-role/:uid", async (req, res) => {
+  const uid = req.params.uid;
+
+  try {
+    const [rows] = await pool.query(
+      "SELECT role FROM users WHERE firebase_uid = ?",
+      [uid]
+    );
+
+    if (rows.length > 0) {
+      res.json({ role: rows[0].role });
+    } else {
+      res.status(404).json({ error: "User not found" });
+    }
+  } catch (error) {
+    console.error("Get role error:", error);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+
 connectDB().then(() => {
   app.listen(PORT, () => {
     console.log("Server running on port", PORT);
