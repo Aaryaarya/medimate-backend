@@ -135,6 +135,91 @@ Return ONLY raw text exactly as written.
     res.status(500).json({ error: "Gemini OCR failed" });
   }
 });
+app.post("/structure-text", async (req, res) => {
+  try {
+    const { raw_text } = req.body;
+
+    if (!raw_text) {
+      return res.status(400).json({ error: "No raw text provided" });
+    }
+
+    const prompt = `
+You are a prescription structuring system.
+
+Convert the prescription text into STRICT JSON in this format:
+
+{
+  "medications": [
+    {
+      "name": "",
+      "dosesPerDay": "",
+      "dosageDetails": "",
+      "remarks": ""
+    }
+  ]
+}
+
+Rules:
+- Decode frequencies (BD, TDS, 1-0-1, etc.) into readable form.
+- Combine duration and quantity inside "dosageDetails".
+- Mention food instruction inside "remarks".
+- No markdown.
+- No explanation.
+- Return valid JSON only.
+
+Prescription Text:
+${raw_text}
+`;
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [{ text: prompt }],
+            },
+          ],
+        }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error(data);
+      return res.status(500).json({ error: "Gemini structuring failed" });
+    }
+
+    let structured =
+      data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+    // Clean markdown if Gemini adds it
+    structured = structured
+      .replace(/```json/g, "")
+      .replace(/```/g, "")
+      .trim();
+
+    let parsed;
+
+    try {
+      parsed = JSON.parse(structured);
+    } catch (err) {
+      console.error("Invalid JSON from Gemini:", structured);
+      return res.status(500).json({ error: "Invalid JSON from Gemini" });
+    }
+
+    res.json(parsed);
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Structure processing failed" });
+  }
+});
 connectDB().then(() => {
   app.listen(PORT, () => {
     console.log("Server running on port", PORT);
