@@ -80,27 +80,47 @@ app.post("/analyze-prescription", upload.single("image"), async (req, res) => {
       return res.status(400).json({ error: "No image uploaded" });
     }
 
+    // STEP 1 — Generate SHA256 hash
+    const imageHash = crypto
+      .createHash("sha256")
+      .update(req.file.buffer)
+      .digest("hex");
+
+    // STEP 2 — Check if already processed
+    const [rows] = await pool.query(
+      "SELECT raw_text, structured_json FROM prescriptions WHERE image_hash = ?",
+      [imageHash]
+    );
+
+    if (rows.length > 0) {
+      console.log("Image already processed. Returning stored result.");
+      return res.json({
+        raw_text: rows[0].raw_text,
+        structured_json: JSON.parse(rows[0].structured_json),
+        from_cache: true
+      });
+    }
+
+    // STEP 3 — If not processed → Call Gemini OCR
+
     const imageBase64 = req.file.buffer.toString("base64");
 
     let mimeType = req.file.mimetype;
-
     if (mimeType === "application/octet-stream") {
       mimeType = "image/jpeg";
     }
 
     const prompt = `
 You are an OCR text extraction system.
-Extract ALL visible text from the prescription image.
-Return ONLY raw text exactly as written.
+Extract ALL visible text exactly as written.
+Return plain text only.
 `;
 
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [
             {
@@ -116,6 +136,9 @@ Return ONLY raw text exactly as written.
             },
           ],
         }),
+        generationConfig: {
+          temperature: 0
+        }
       }
     );
 
@@ -123,17 +146,46 @@ Return ONLY raw text exactly as written.
 
     if (!response.ok) {
       console.error(data);
-      return res.status(500).json({ error: "Gemini API error" });
+      return res.status(500).json({ error: "Gemini OCR failed" });
     }
 
     const rawText =
       data.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
-    res.json({ raw_text: rawText });
+    // STEP 4 — Structure text (call your existing structure logic)
+    // We call your /structure-text internally
+
+    const structureResponse = await fetch(
+      `https://medimate-backend-wzk0.onrender.com/structure-text`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ raw_text: rawText }),
+      }
+    );
+
+    const structuredData = await structureResponse.json();
+
+    // STEP 5 — Save everything including hash
+    await pool.query(
+      "INSERT INTO prescriptions (firebase_uid, raw_text, structured_json, image_hash) VALUES (?, ?, ?, ?)",
+      [
+        req.body.firebase_uid || "unknown",
+        rawText,
+        JSON.stringify(structuredData),
+        imageHash,
+      ]
+    );
+
+    return res.json({
+      raw_text: rawText,
+      structured_json: structuredData,
+      from_cache: false
+    });
 
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Gemini OCR failed" });
+    console.error("Analyze error:", error);
+    res.status(500).json({ error: "Processing failed" });
   }
 });
 app.post("/structure-text", async (req, res) => {
