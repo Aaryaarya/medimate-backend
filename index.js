@@ -196,29 +196,47 @@ app.post("/structure-text", async (req, res) => {
       return res.status(400).json({ error: "No raw text provided" });
     }
 
-    const prompt = `
-You are a prescription structuring system.
+    const prompt = `You are a prescription structuring system.
 
 Convert the prescription text into STRICT JSON in this format:
 
 {
-  "medications": [
-    {
-      "name": "",
-      "dosesPerDay": "",
-      "dosageDetails": "",
-      "remarks": ""
-    }
-  ]
+"medications": [
+{
+"name": "",
+"quantity": "",
+"dosage": "",
+"durationDays": "",
+"remarks": ""
+}
+]
 }
 
 Rules:
-- Decode frequencies (BD, TDS, 1-0-1, etc.) into readable form.
-- Combine duration and quantity inside "dosageDetails".
-- Mention food instruction inside "remarks".
-- No markdown.
-- No explanation.
-- Return valid JSON only.
+
+* Extract ONLY the medicine name into "name". Remove strength, quantity, frequency, and duration from the name.
+* Extract strength (e.g., 500 mg, 625 mg) or syrup quantity (e.g., 5 ml, 10 ml) into "quantity". If not mentioned, return "-".
+* Convert frequency into a 3-digit format (Morning-Afternoon-Night):
+
+  * 1-0-1 → "101"
+  * 1-1-1 → "111"
+  * 0-0-1 → "001"
+  * BD → "101"
+  * TDS → "111"
+  * OD → "100"
+  * If only "after food" is mentioned without numbers → "111"
+  * SOS or PRN → "As Needed"
+* "dosage" must contain ONLY the standardized dosage value (e.g., "101", "111", "100", or "As Needed").
+* Extract duration in days into "durationDays" as a number only (e.g., 5).
+* If a global duration (e.g., "for 5 days") is mentioned for the whole prescription, apply it to all medicines unless a specific medicine has its own duration.
+* If duration is not mentioned anywhere, return "NS".
+* Put additional instructions such as "before food", "after food", "after meals", "before meals", "orally", "at bedtime", etc. inside the "remarks" field.
+* If no extra instruction is mentioned, return "-" in "remarks".
+* Do not include dosage numbers or duration inside "remarks".
+* Do not add extra keys.
+* No markdown.
+* No explanation.
+* Return valid JSON only.
 
 Prescription Text:
 ${raw_text}
