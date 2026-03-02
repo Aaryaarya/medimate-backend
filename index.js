@@ -273,22 +273,7 @@ ${raw_text}
     res.status(500).json({ error: "Structure processing failed" });
   }
 });
-app.post("/save-prescription", async (req, res) => {
-  try {
-    const { firebase_uid, raw_text, structured_json } = req.body;
 
-    await pool.query(
-      "INSERT INTO prescriptions (firebase_uid, raw_text, structured_json) VALUES (?, ?, ?)",
-      [firebase_uid, raw_text, JSON.stringify(structured_json)]
-    );
-
-    res.json({ message: "Prescription saved successfully" });
-
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Failed to save prescription" });
-  }
-});
 connectDB().then(() => {
   app.listen(PORT, () => {
     console.log("Server running on port", PORT);
