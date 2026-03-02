@@ -96,7 +96,7 @@ app.post("/analyze-prescription", upload.single("image"), async (req, res) => {
       console.log("Image already processed. Returning stored result.");
       return res.json({
         raw_text: rows[0].raw_text,
-        structured_json: JSON.parse(rows[0].structured_json),
+        structured_json: rows[0].structured_json,
         from_cache: true
       });
     }
