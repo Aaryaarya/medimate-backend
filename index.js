@@ -218,12 +218,12 @@ Rules:
 * Extract strength (e.g., 500 mg, 625 mg) or syrup quantity (e.g., 5 ml, 10 ml) into "quantity". If not mentioned, return "-".
 * Convert frequency into a 3-digit format (Morning-Afternoon-Night):
 
-  * 1-0-1 → "101"
-  * 1-1-1 → "111"
-  * 0-0-1 → "001"
-  * BD → "101"
-  * TDS → "111"
-  * OD → "100"
+  * 1-0-1 → "1-0-1"
+  * 1-1-1 → "1-1-1"
+  * 0-0-1 → "0-0-1"
+  * BD → "1-0-1"
+  * TDS → "1-1-1"
+  * OD → "1-0-0"
   * If only "after food" is mentioned without numbers → "111"
   * SOS or PRN → "As Needed"
 * "dosage" must contain ONLY the standardized dosage value (e.g., "101", "111", "100", or "As Needed").
