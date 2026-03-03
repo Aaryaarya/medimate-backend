@@ -167,15 +167,18 @@ Return plain text only.
     const structuredData = await structureResponse.json();
 
     // STEP 5 — Save everything including hash
-    await pool.query(
-      "INSERT INTO prescriptions (firebase_uid, raw_text, structured_json, image_hash) VALUES (?, ?, ?, ?)",
-      [
-        req.body.firebase_uid || "unknown",
-        rawText,
-        JSON.stringify(structuredData),
-        imageHash,
-      ]
-    );
+    // STEP 5 — Save everything including image binary
+await pool.query(
+  "INSERT INTO prescriptions (firebase_uid, raw_text, structured_json, image_hash, image_data, image_mime) VALUES (?, ?, ?, ?, ?, ?)",
+  [
+    req.body.firebase_uid || "unknown",
+    rawText,
+    JSON.stringify(structuredData),
+    imageHash,
+    req.file.buffer,
+    req.file.mimetype
+  ]
+);
 
     return res.json({
       raw_text: rawText,
@@ -290,17 +293,29 @@ ${raw_text}
     console.error(error);
     res.status(500).json({ error: "Structure processing failed" });
   }
-});
-app.get("/past-prescriptions/:uid", async (req, res) => {
+});app.get("/past-prescriptions/:uid", async (req, res) => {
   try {
     const uid = req.params.uid;
 
     const [rows] = await pool.query(
-      "SELECT id, structured_json, created_at FROM prescriptions WHERE firebase_uid = ? ORDER BY created_at DESC",
+      "SELECT id, structured_json, created_at, image_data, image_mime FROM prescriptions WHERE firebase_uid = ? ORDER BY created_at DESC",
       [uid]
     );
 
-    res.json(rows);
+    const formatted = rows.map(row => ({
+      id: row.id,
+      created_at: row.created_at,
+      structured_json:
+        typeof row.structured_json === "string"
+          ? JSON.parse(row.structured_json)
+          : row.structured_json,
+      image_base64: row.image_data
+        ? row.image_data.toString("base64")
+        : null,
+      image_mime: row.image_mime
+    }));
+
+    res.json(formatted);
 
   } catch (error) {
     console.error("Fetch history error:", error);
