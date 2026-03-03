@@ -5,6 +5,7 @@ const mysql = require("mysql2/promise");
 const cors = require("cors");
 const multer = require("multer");
 const upload = multer();
+const admin = require("./firebase-admin");
 
 
 const app = express();
@@ -320,6 +321,113 @@ ${raw_text}
   } catch (error) {
     console.error("Fetch history error:", error);
     res.status(500).json({ error: "Failed to fetch prescriptions" });
+  }
+});
+app.post("/save-token", async (req, res) => {
+  try {
+    const { firebase_uid, fcm_token } = req.body;
+
+    await pool.query(
+      "UPDATE users SET fcm_token = ? WHERE firebase_uid = ?",
+      [fcm_token, firebase_uid]
+    );
+
+    res.json({ message: "Token saved successfully" });
+  } catch (error) {
+    console.error("Save token error:", error);
+    res.status(500).json({ error: "Failed to save token" });
+  }
+});
+app.post("/generate-reminders", async (req, res) => {
+  try {
+    const { firebase_uid, prescription_id, medications, meal_times } = req.body;
+
+    for (const med of medications) {
+      if (med.dosage === "As Needed") continue;
+
+      const duration = parseInt(med.durationDays);
+      if (isNaN(duration)) continue;
+
+      for (let day = 0; day < duration; day++) {
+        const baseDate = new Date();
+        baseDate.setDate(baseDate.getDate() + day);
+
+        const meals = ["breakfast", "lunch", "dinner"];
+
+        for (let i = 0; i < 3; i++) {
+          if (med.dosage[i] === "1") {
+
+            const mealTime = meal_times[meals[i]];
+            const [hour, minute] = mealTime.split(":");
+
+            let reminderTime = new Date(
+              baseDate.getFullYear(),
+              baseDate.getMonth(),
+              baseDate.getDate(),
+              parseInt(hour),
+              parseInt(minute)
+            );
+
+            const beforeFood = med.remarks?.toLowerCase().includes("before");
+
+            if (beforeFood) {
+              reminderTime.setMinutes(reminderTime.getMinutes() - 30);
+            } else {
+              reminderTime.setMinutes(reminderTime.getMinutes() + 30);
+            }
+
+            await pool.query(
+              "INSERT INTO reminders (firebase_uid, prescription_id, medicine_name, reminder_time) VALUES (?, ?, ?, ?)",
+              [firebase_uid, prescription_id, med.name, reminderTime]
+            );
+          }
+        }
+      }
+    }
+
+    res.json({ message: "Reminders generated successfully" });
+
+  } catch (error) {
+    console.error("Generate reminder error:", error);
+    res.status(500).json({ error: "Failed to generate reminders" });
+  }
+});
+const cron = require("node-cron");
+const admin = require("./firebase-admin");
+
+cron.schedule("* * * * *", async () => {
+  try {
+    console.log("Checking reminders...");
+
+    const [rows] = await pool.query(
+      "SELECT * FROM reminders WHERE reminder_time <= NOW() AND sent = FALSE"
+    );
+
+    for (const reminder of rows) {
+
+      const [user] = await pool.query(
+        "SELECT fcm_token FROM users WHERE firebase_uid = ?",
+        [reminder.firebase_uid]
+      );
+
+      if (!user[0]?.fcm_token) continue;
+
+      await admin.messaging().send({
+        token: user[0].fcm_token,
+        notification: {
+          title: "MediMate Reminder",
+          body: `Take ${reminder.medicine_name}`,
+        },
+      });
+
+      await pool.query(
+        "UPDATE reminders SET sent = TRUE WHERE id = ?",
+        [reminder.id]
+      );
+    }
+
+  } catch (error) {
+    console.error("Cron error:", error);
   }
 });
 connectDB().then(() => {
