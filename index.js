@@ -291,7 +291,22 @@ ${raw_text}
     res.status(500).json({ error: "Structure processing failed" });
   }
 });
+app.get("/past-prescriptions/:uid", async (req, res) => {
+  try {
+    const uid = req.params.uid;
 
+    const [rows] = await pool.query(
+      "SELECT id, structured_json, created_at FROM prescriptions WHERE firebase_uid = ? ORDER BY created_at DESC",
+      [uid]
+    );
+
+    res.json(rows);
+
+  } catch (error) {
+    console.error("Fetch history error:", error);
+    res.status(500).json({ error: "Failed to fetch prescriptions" });
+  }
+});
 connectDB().then(() => {
   app.listen(PORT, () => {
     console.log("Server running on port", PORT);
