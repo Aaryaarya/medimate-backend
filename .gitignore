@@ -1,6 +1,4 @@
 serviceAccountKey.json
-*.json
+firebase-admin-key.json
 .env
 node_modules
-serviceAccountKey.json
-firebase-admin-key.jsonc:\Users\aryas\Downloads\medimate-704f1-firebase-adminsdk-fbsvc-fb6c3dbccd.json
