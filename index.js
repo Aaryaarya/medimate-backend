@@ -1,12 +1,14 @@
 require("dotenv").config();
+
 const crypto = require("crypto");
 const express = require("express");
 const mysql = require("mysql2/promise");
 const cors = require("cors");
 const multer = require("multer");
+const cron = require("node-cron");
+
 const upload = multer();
 const admin = require("./firebase-admin");
-
 
 const app = express();
 app.use(cors());
@@ -230,7 +232,8 @@ Rules:
   * OD → "1-0-0"
   * If only "after food" is mentioned without numbers → "111"
   * SOS or PRN → "As Needed"
-* "dosage" must contain ONLY the standardized dosage value (e.g., "101", "111", "100", or "As Needed").
+* "dosage" must contain ONLY the standardized dosage value 
+(e.g., "1-0-1", "1-1-1", "1-0-0", or "As Needed").
 * Extract duration in days into "durationDays" as a number only (e.g., 5).
 * If a global duration (e.g., "for 5 days") is mentioned for the whole prescription, apply it to all medicines unless a specific medicine has its own duration.
 * If duration is not mentioned anywhere, return "NS".
@@ -341,34 +344,48 @@ app.post("/save-token", async (req, res) => {
 app.post("/generate-reminders", async (req, res) => {
   try {
     const { firebase_uid, prescription_id, medications, meal_times } = req.body;
-
+    await pool.query(
+      "DELETE FROM reminders WHERE prescription_id = ?",
+      [prescription_id]
+    );
     for (const med of medications) {
-      if (med.dosage === "As Needed") continue;
+
+      if (!med.dosage || med.dosage === "As Needed") continue;
 
       const duration = parseInt(med.durationDays);
-      if (isNaN(duration)) continue;
+      if (!duration || duration <= 0) continue;
+
+      // remove dash from dosage (1-0-1 -> 101)
+      const dosage = med.dosage.replace(/-/g, "");
 
       for (let day = 0; day < duration; day++) {
+
         const baseDate = new Date();
         baseDate.setDate(baseDate.getDate() + day);
 
         const meals = ["breakfast", "lunch", "dinner"];
 
         for (let i = 0; i < 3; i++) {
-          if (med.dosage[i] === "1") {
 
-            const mealTime = meal_times[meals[i]];
-            const [hour, minute] = mealTime.split(":");
+          if (dosage[i] === "1") {
 
-            let reminderTime = new Date(
-              baseDate.getFullYear(),
-              baseDate.getMonth(),
-              baseDate.getDate(),
-              parseInt(hour),
-              parseInt(minute)
-            );
+  const mealTime = meal_times[meals[i]];
+  if (!mealTime) continue;
 
-            const beforeFood = med.remarks?.toLowerCase().includes("before");
+  const [hour, minute] = mealTime.split(":");
+
+  let reminderTime = new Date(
+    baseDate.getFullYear(),
+    baseDate.getMonth(),
+    baseDate.getDate(),
+    parseInt(hour),
+    parseInt(minute)
+  );
+
+
+            const beforeFood =
+              med.remarks &&
+              med.remarks.toLowerCase().includes("before");
 
             if (beforeFood) {
               reminderTime.setMinutes(reminderTime.getMinutes() - 30);
@@ -377,7 +394,9 @@ app.post("/generate-reminders", async (req, res) => {
             }
 
             await pool.query(
-              "INSERT INTO reminders (firebase_uid, prescription_id, medicine_name, reminder_time) VALUES (?, ?, ?, ?)",
+              `INSERT INTO reminders 
+(firebase_uid, prescription_id, medicine_name, reminder_time, active, sent)
+VALUES (?, ?, ?, ?, TRUE, FALSE)`,
               [firebase_uid, prescription_id, med.name, reminderTime]
             );
           }
@@ -393,14 +412,17 @@ app.post("/generate-reminders", async (req, res) => {
   }
 });
 const cron = require("node-cron");
-const admin = require("./firebase-admin");
+
 
 cron.schedule("* * * * *", async () => {
   try {
     console.log("Checking reminders...");
 
     const [rows] = await pool.query(
-      "SELECT * FROM reminders WHERE reminder_time <= NOW() AND sent = FALSE"
+      `SELECT * FROM reminders 
+       WHERE reminder_time <= NOW() 
+       AND reminder_time >= NOW() - INTERVAL 1 MINUTE
+       AND sent = FALSE`
     );
 
     for (const reminder of rows) {
@@ -410,13 +432,13 @@ cron.schedule("* * * * *", async () => {
         [reminder.firebase_uid]
       );
 
-      if (!user[0]?.fcm_token) continue;
+      if (!user.length || !user[0].fcm_token) continue;
 
       await admin.messaging().send({
         token: user[0].fcm_token,
         notification: {
           title: "MediMate Reminder",
-          body: `Take ${reminder.medicine_name}`,
+          body: `Time to take ${reminder.medicine_name}`,
         },
       });
 
