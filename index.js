@@ -240,6 +240,7 @@ Rules:
 * Put additional instructions such as "before food", "after food", "after meals", "before meals", "orally", "at bedtime", etc. inside the "remarks" field.
 * If no extra instruction is mentioned, return "-" in "remarks".
 * Do not include dosage numbers or duration inside "remarks".
+*If the uploaded image is not a medical prescription or if no medicine names are detected, do NOT generate a medicine table. Instead return the message: "No medicines found. This image may not be a valid prescription".
 * Do not add extra keys.
 * No markdown.
 * No explanation.
