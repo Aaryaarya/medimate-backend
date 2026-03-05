@@ -5,7 +5,8 @@ const express = require("express");
 const mysql = require("mysql2/promise");
 const cors = require("cors");
 const multer = require("multer");
-
+const { fromBuffer } = require("pdf2pic");
+const fs = require("fs");
 
 const upload = multer();
 const admin = require("./firebase-admin");
@@ -106,12 +107,33 @@ app.post("/analyze-prescription", upload.single("image"), async (req, res) => {
 
     // STEP 3 — If not processed → Call Gemini OCR
 
-    const imageBase64 = req.file.buffer.toString("base64");
+    let imageBuffer = req.file.buffer;
+let mimeType = req.file.mimetype;
 
-    let mimeType = req.file.mimetype;
-    if (mimeType === "application/octet-stream") {
-      mimeType = "image/jpeg";
-    }
+// If user uploaded PDF → convert first page to image
+if (mimeType === "application/pdf") {
+
+  console.log("PDF uploaded, converting to image...");
+
+  const convert = fromBuffer(req.file.buffer, {
+    density: 300,
+    format: "png",
+    width: 2000,
+    height: 2000
+  });
+
+  const page = await convert(1);
+
+  imageBuffer = fs.readFileSync(page.path);
+  mimeType = "image/png";
+}
+
+// Convert to base64 for Gemini
+const imageBase64 = imageBuffer.toString("base64");
+
+if (mimeType === "application/octet-stream") {
+  mimeType = "image/jpeg";
+}
 
     const prompt = `
 You are an OCR text extraction system.
