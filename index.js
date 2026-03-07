@@ -5,7 +5,7 @@ const express = require("express");
 const mysql = require("mysql2/promise");
 const cors = require("cors");
 const multer = require("multer");
-const { fromBuffer } = require("pdf2pic");
+const pdf = require("pdf-img-convert");
 const fs = require("fs");
 
 const upload = multer();
@@ -111,27 +111,26 @@ app.post("/analyze-prescription", upload.single("image"), async (req, res) => {
 let mimeType = req.file.mimetype;
 
 // If user uploaded PDF → convert first page to image
-if (mimeType === "application/pdf") {
+if (
+  mimeType === "application/pdf" ||
+  req.file.originalname.toLowerCase().endsWith(".pdf")
+) {
 
   console.log("PDF uploaded, converting to image...");
 
-  const convert = fromBuffer(req.file.buffer, {
-    density: 300,
-    format: "png",
-    width: 2000,
-    height: 2000
-  });
+  const images = await pdf.convert(req.file.buffer);
 
-  const page = await convert(1);
-
-  imageBuffer = fs.readFileSync(page.path);
-  mimeType = "image/png";
+imageBuffer = images[0]; // first page
+mimeType = "image/png";
 }
 
 // Convert to base64 for Gemini
 const imageBase64 = imageBuffer.toString("base64");
 
-if (mimeType === "application/octet-stream") {
+if (
+  mimeType === "application/octet-stream" &&
+  !req.file.originalname.toLowerCase().endsWith(".pdf")
+) {
   mimeType = "image/jpeg";
 }
 
@@ -200,8 +199,8 @@ await pool.query(
     rawText,
     JSON.stringify(structuredData),
     imageHash,
-    req.file.buffer,
-    req.file.mimetype
+    imageBuffer,
+    mimeType
   ]
 );
 
