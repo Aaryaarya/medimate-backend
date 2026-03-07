@@ -111,7 +111,10 @@ app.post("/analyze-prescription", upload.single("image"), async (req, res) => {
 let mimeType = req.file.mimetype;
 
 // If user uploaded PDF → convert first page to image
-if (mimeType === "application/pdf") {
+if (
+  mimeType === "application/pdf" ||
+  req.file.originalname.toLowerCase().endsWith(".pdf")
+) {
 
   console.log("PDF uploaded, converting to image...");
 
@@ -131,7 +134,10 @@ if (mimeType === "application/pdf") {
 // Convert to base64 for Gemini
 const imageBase64 = imageBuffer.toString("base64");
 
-if (mimeType === "application/octet-stream") {
+if (
+  mimeType === "application/octet-stream" &&
+  !req.file.originalname.toLowerCase().endsWith(".pdf")
+) {
   mimeType = "image/jpeg";
 }
 
@@ -200,8 +206,8 @@ await pool.query(
     rawText,
     JSON.stringify(structuredData),
     imageHash,
-    req.file.buffer,
-    req.file.mimetype
+    imageBuffer,
+    mimeType
   ]
 );
 
