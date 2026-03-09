@@ -79,7 +79,50 @@ app.get("/get-role/:uid", async (req, res) => {
     res.status(500).json({ error: "Database error" });
   }
 });
+
+
+// =====================================================
+// 🧑‍⚕️ CARETAKER ROUTES  ← ✅ ADD RIGHT HERE
+// =====================================================
+
+// ➕ Add new patient
+app.post("/add-patient", async (req, res) => {
+  const { caretaker_uid, name, age, gender, notes } = req.body;
+
+  const patientId =
+    "PAT_" + Math.random().toString(36).substring(2, 8).toUpperCase();
+
+  try {
+    await pool.query(
+      "INSERT INTO patients (id, caretaker_uid, name, age, gender, notes) VALUES (?, ?, ?, ?, ?, ?)",
+      [patientId, caretaker_uid, name, age, gender, notes]
+    );
+
+    res.json({ message: "Patient added", patient_id: patientId });
+  } catch (error) {
+    console.error("Add patient error:", error);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+// 📋 Get all patients of a caretaker
+app.get("/caretaker-patients/:uid", async (req, res) => {
+  const { uid } = req.params;
+
+  try {
+    const [rows] = await pool.query(
+      "SELECT * FROM patients WHERE caretaker_uid = ? ORDER BY created_at DESC",
+      [uid]
+    );
+
+    res.json(rows);
+  } catch (error) {
+    console.error("Fetch patients error:", error);
+    res.status(500).json({ error: "Database error" });
+  }
+});
 app.post("/analyze-prescription", upload.single("image"), async (req, res) => {
+   const { firebase_uid, patient_id } = req.body;
   try {
     if (!req.file) {
       return res.status(400).json({ error: "No image uploaded" });
@@ -93,11 +136,14 @@ app.post("/analyze-prescription", upload.single("image"), async (req, res) => {
 
     // STEP 2 — Check if already processed
     // STEP 2 — Check if already processed BY SAME USER
+const ownerField = req.body.patient_id ? "patient_id" : "firebase_uid";
+const ownerValue = req.body.patient_id || req.body.firebase_uid;
+
 const [rows] = await pool.query(
   `SELECT raw_text, structured_json 
    FROM prescriptions 
-   WHERE image_hash = ? AND firebase_uid = ?`,
-  [imageHash, req.body.firebase_uid]
+   WHERE image_hash = ? AND ${ownerField} = ?`,
+  [imageHash, ownerValue]
 );
 
 if (rows.length > 0) {
@@ -198,9 +244,10 @@ Return plain text only.
     // STEP 5 — Save everything including hash
     // STEP 5 — Save everything including image binary
 await pool.query(
-  "INSERT INTO prescriptions (firebase_uid, raw_text, structured_json, image_hash, image_data, image_mime) VALUES (?, ?, ?, ?, ?, ?)",
+  "INSERT INTO prescriptions (firebase_uid, patient_id, raw_text, structured_json, image_hash, image_data, image_mime) VALUES (?, ?, ?, ?, ?, ?, ?)",
   [
-    req.body.firebase_uid || "unknown",
+    req.body.firebase_uid || null,   // for normal users
+    req.body.patient_id || null,    // for caretaker patients
     rawText,
     JSON.stringify(structuredData),
     imageHash,
@@ -350,6 +397,36 @@ ${raw_text}
 
   } catch (error) {
     console.error("Fetch history error:", error);
+    res.status(500).json({ error: "Failed to fetch prescriptions" });
+  }
+});
+// 📜 Get prescriptions for caretaker patient
+app.get("/patient-prescriptions/:patientId", async (req, res) => {
+  try {
+    const patientId = req.params.patientId;
+
+    const [rows] = await pool.query(
+      "SELECT id, structured_json, created_at, image_data, image_mime FROM prescriptions WHERE patient_id = ? ORDER BY created_at DESC",
+      [patientId]
+    );
+
+    const formatted = rows.map(row => ({
+      id: row.id,
+      created_at: row.created_at,
+      structured_json:
+        typeof row.structured_json === "string"
+          ? JSON.parse(row.structured_json)
+          : row.structured_json,
+      image_base64: row.image_data
+        ? row.image_data.toString("base64")
+        : null,
+      image_mime: row.image_mime
+    }));
+
+    res.json(formatted);
+
+  } catch (error) {
+    console.error("Fetch patient history error:", error);
     res.status(500).json({ error: "Failed to fetch prescriptions" });
   }
 });
