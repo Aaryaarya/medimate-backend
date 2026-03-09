@@ -20,6 +20,7 @@
     "firebase-admin": "^13.7.0",
     "multer": "^2.0.2",
     "mysql2": "^3.17.2",
-    "node-cron": "^4.2.1"
+    "node-cron": "^4.2.1",
+    "pdf2pic": "^3.2.0"
   }
 }
