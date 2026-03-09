@@ -92,19 +92,22 @@ app.post("/analyze-prescription", upload.single("image"), async (req, res) => {
       .digest("hex");
 
     // STEP 2 — Check if already processed
-    const [rows] = await pool.query(
-      "SELECT raw_text, structured_json FROM prescriptions WHERE image_hash = ?",
-      [imageHash]
-    );
+    // STEP 2 — Check if already processed BY SAME USER
+const [rows] = await pool.query(
+  `SELECT raw_text, structured_json 
+   FROM prescriptions 
+   WHERE image_hash = ? AND firebase_uid = ?`,
+  [imageHash, req.body.firebase_uid]
+);
 
-    if (rows.length > 0) {
-      console.log("Image already processed. Returning stored result.");
-      return res.json({
-        raw_text: rows[0].raw_text,
-        structured_json: rows[0].structured_json,
-        from_cache: true
-      });
-    }
+if (rows.length > 0) {
+  console.log("Image already processed by this user. Returning stored result.");
+  return res.json({
+    raw_text: rows[0].raw_text,
+    structured_json: JSON.parse(rows[0].structured_json),
+    from_cache: true
+  });
+}
 
     // STEP 3 — If not processed → Call Gemini OCR
 
