@@ -8,7 +8,7 @@ const cors = require("cors");
 const multer = require("multer");
 const { fromBuffer } = require("pdf2pic");
 const fs = require("fs");
-
+const fetch = require("node-fetch"); // ✅ ADD THIS
 const upload = multer();
 const admin = require("./firebase-admin");
 
