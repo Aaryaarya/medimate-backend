@@ -153,9 +153,13 @@ const [rows] = await pool.query(
 
 if (rows.length > 0) {
   console.log("Image already processed by this user. Returning stored result.");
+
   return res.json({
     raw_text: rows[0].raw_text,
-    structured_json: JSON.parse(rows[0].structured_json),
+    structured_json:
+      typeof rows[0].structured_json === "string"
+        ? JSON.parse(rows[0].structured_json)
+        : rows[0].structured_json,
     from_cache: true
   });
 }
