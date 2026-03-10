@@ -123,6 +123,11 @@ app.get("/caretaker-patients/:uid", async (req, res) => {
 });
 app.post("/analyze-prescription", upload.single("image"), async (req, res) => {
    const { firebase_uid, patient_id } = req.body;
+   if (!firebase_uid && !patient_id) {
+    return res.status(400).json({
+      error: "Missing firebase_uid or patient_id"
+    });
+  }
   try {
     if (!req.file) {
       return res.status(400).json({ error: "No image uploaded" });
@@ -243,6 +248,9 @@ Return plain text only.
 
     // STEP 5 — Save everything including hash
     // STEP 5 — Save everything including image binary
+
+console.log("firebase_uid:", req.body.firebase_uid);
+console.log("patient_id:", req.body.patient_id);
 await pool.query(
   "INSERT INTO prescriptions (firebase_uid, patient_id, raw_text, structured_json, image_hash, image_data, image_mime) VALUES (?, ?, ?, ?, ?, ?, ?)",
   [
