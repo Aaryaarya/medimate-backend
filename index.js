@@ -568,6 +568,36 @@ cron.schedule("* * * * *", async () => {
     console.error("Cron error:", error);
   }
 });
+// ❌ Delete patient + their data
+app.delete("/delete-patient/:id", async (req, res) => {
+  const patientId = req.params.id;
+
+  try {
+    // Delete reminders linked to prescriptions of this patient
+    await pool.query(`
+      DELETE r FROM reminders r
+      JOIN prescriptions p ON r.prescription_id = p.id
+      WHERE p.patient_id = ?
+    `, [patientId]);
+
+    // Delete prescriptions of patient
+    await pool.query(
+      "DELETE FROM prescriptions WHERE patient_id = ?",
+      [patientId]
+    );
+
+    // Delete patient
+    await pool.query(
+      "DELETE FROM patients WHERE id = ?",
+      [patientId]
+    );
+
+    res.json({ message: "Patient and related data deleted" });
+  } catch (error) {
+    console.error("Delete patient error:", error);
+    res.status(500).json({ error: "Delete failed" });
+  }
+});
 connectDB().then(() => {
   app.listen(PORT, () => {
     console.log("Server running on port", PORT);
